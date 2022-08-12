@@ -1812,17 +1812,23 @@ NewNamespace.triple : Nat → Nat
 NewNamespace.quadruple : Nat → Nat
 可以打开命名空间，这允许在没有明确限定的情况下使用其中的名称。在表达式之前写入open MyNamespace in会导致表达式中的内容MyNamespace可用。例如，timesTwelve同时使用quadruple和triple打开后NewNamespace：
 
-
+```lean
 def timesTwelve (x : Nat) :=
   open NewNamespace in
   quadruple (triple x)
+```
+
 命名空间也可以在命令之前打开。这允许命令的所有部分引用命名空间的内容，而不仅仅是单个表达式。为此，请将open ... in命令放在前面。
 
-
+```lean
 open NewNamespace in
 #check quadruple
+```
 
+```
 quadruple : Nat → Nat
+```
+
 最后，可以为文件其余部分的所有以下命令打开名称空间。为此，只需in从open.
 
 如果让
@@ -1875,19 +1881,27 @@ invalid constructor ⟨...⟩, expected type must be an inductive type
 字符串插值
 在Lean中，为字符串添加前缀s!会触发插值，其中字符串内大括号中包含的表达式被替换为它们的值。这类似于fPython 中的 -strings 和$C# 中的 -prefixed 字符串。例如，
 
-
+```lean
 #eval s!"three fives is {NewNamespace.triple 5}"
+```
+
 产生输出
 
-
+```
 "three fives is 15"
+```
+
 并非所有表达式都可以插入到字符串中。例如，尝试对函数进行插值会导致错误。
 
-
+```lean
 #check s!"three fives is {NewNamespace.triple}"
+```
+
 产生输出
 
-
+```
 failed to synthesize instance
   ToString (Nat → Nat)
+```
+
 这是因为没有将函数转换为字符串的标准方法。Lean编译器维护了一个表，该表描述了如何将各种类型的值转换为字符串，并且该消息failed to synthesize instance意味着Lean编译器在该表中没有找到给定类型的条目。这使用与结构部分deriving Repr中描述的语法相同的语言特征。
