@@ -1429,3 +1429,465 @@ def ofFive : MyType := ctor 5
 - 编写一个多态函数`take`，返回列表中的前`n`个条目，其中`n`是`a Nat`。如果列表包含少于`n`条目，则结果列表应该是输入列表。`#eval take 3 ["bolete", "oyster"]`应该输出`["bolete", "oyster"]`，也`#eval take 1 ["bolete", "oyster"]`应该输出`["bolete"]`。
 - 使用类型和算术之间的类比，编写一个将乘积分配给总和的函数。换句话说，它应该有`type α × (β ⊕ γ) → (α × β) ⊕ (α × γ)`。
 - 使用类型和算术之间的类比，编写一个将乘以`2`变为和的函数。换句话说，它应该有`type Bool × α → α ⊕ α`。
+
+### 额外的便利
+
+Lean包含许多方便的功能，使程序更加简洁。
+
+自动隐式参数
+在 Lean 中编写多态函数时，通常不需要列出所有隐式参数。相反，可以简单地提及它们。如果 Lean 可以确定它们的类型，那么它们会自动作为隐式参数插入。换句话说，之前的定义length：
+
+```lean
+def length {α : Type} (xs : List α) : Nat :=
+  match xs with
+  | [] => 0
+  | y :: ys => Nat.succ (length ys)
+```
+
+可以不写`{α : Type}`：
+
+```lean
+def length (xs : List α) : Nat :=
+  match xs with
+  | [] => 0
+  | y :: ys => Nat.succ (length ys)
+```
+
+这可以极大地简化采用许多隐式参数的高度多态定义。
+
+模式匹配定义
+使用 定义函数时def，很常见的是命名一个参数，然后立即将其与模式匹配一​​起使用。例如，在 中length，该参数xs仅在 中使用match。在这些情况下，match表达式的情况可以直接写出来，根本不用命名参数。
+
+第一步是以函数类型的形式将参数的类型移动到定义类型的右侧。例如，类型length是List α → Nat。然后，将 替换:=为模式匹配的每种情况：
+
+```lean
+def length : List α → Nat
+  | [] => 0
+  | y :: ys => Nat.succ (length ys)
+```
+
+此语法还可用于定义接受多个参数的函数。在这种情况下，它们的模式用逗号分隔。例如，drop接受一个数字n和一个列表，并在删除前n个条目后返回该列表。
+
+```lean
+def drop : Nat → List α → List α
+  | Nat.zero, xs => xs
+  | _, [] => []
+  | Nat.succ n, x :: xs => drop n xs
+```
+
+命名参数和模式也可以在相同的定义中使用。例如，一个函数接受一个默认值和一个可选值，并在可选值为 时返回默认值none，可以这样写：
+
+```lean
+def fromOption (default : α) : Option α → α
+  | none => default
+  | some x => x
+```
+
+该函数Option.getD在标准库中调用，可以用点表示法调用：
+
+```lean
+#eval (some "salmonberry").getD ""
+```
+
+```
+"salmonberry"
+```
+
+```lean
+#eval none.getD ""
+```
+
+```
+""
+```
+
+局部定义
+命名计算中的中间步骤通常很有用。在许多情况下，中间值本身就代表了有用的概念，明确命名它们可以使程序更易于阅读。在其他情况下，中间值被多次使用。与大多数其他语言一样，在 Lean 中写下相同的代码两次会导致它被计算两次，而将结果保存在变量中会导致计算结果被保存并重用。
+
+例如，unzip是将一对列表转换为一对列表的函数。当对列表为空时，结果unzip是一对空列表。当对列表的头部有一对时，该对的两个字段将添加到解压缩列表其余部分的结果中。的定义unzip完全遵循该描述：
+
+```lean
+def unzip : List (α × β) → List α × List β
+  | [] => ([], [])
+  | (x, y) :: xys =>
+    (x :: (unzip xys).fst, y :: (unzip xys).snd)
+```
+
+不幸的是，有一个问题：这段代码比它需要的要慢。对列表中的每个条目都会导致两次递归调用，这使得该函数需要指数级时间。但是，两个递归调用将具有相同的结果，因此没有理由进行两次递归调用。
+
+在 Lean 中，递归调用的结果可以使用let. 本地定义let类似于顶级定义def：它需要一个本地定义的名称，如果需要的话，一个参数，一个类型签名，然后是一个主体:=。在本地定义之后，可以使用本地定义的表达式（称为 - 表达式的主体）let必须位于新行上，从文件中小于或等于let关键字列的列开始。例如，let可以这样使用unzip：
+
+```lean
+def unzip : List (α × β) → List α × List β
+  | [] => ([], [])
+  | (x, y) :: xys =>
+    let unzipped : List α × List β := unzip xys
+    (x :: unzipped.fst, y :: unzipped.snd)
+```
+
+要let在单行上使用，请用分号将局部定义与正文分开。
+
+let当一种模式足以匹配数据类型的所有情况时，本地定义也可以使用模式匹配。在 的情况下unzip，递归调用的结果是一对。因为对只有一个构造函数，所以unzipped可以用对模式替换名称：
+
+```lean
+def unzip : List (α × β) → List α × List β
+  | [] => ([], [])
+  | (x, y) :: xys =>
+    let (xs, ys) : List α × List β := unzip xys
+    (x :: xs, y :: ys)
+```
+
+let与手动编写访问器调用相比，明智地使用模式可以使代码更易于阅读。
+
+let和之间最大的区别def是递归let定义必须通过写作明确指出let rec。例如，反转列表的一种方法涉及递归辅助函数，如以下定义所示：
+
+```lean
+def reverse (xs : List α) : List α :=
+  let rec helper : List α → List α → List α
+    | [], soFar => soFar
+    | y :: ys, soFar => helper ys (y :: soFar)
+  helper xs []
+```
+
+辅助函数遍历输入列表，一次将一个条目移动到soFar. 当它到达输入列表的末尾时，soFar包含输入的反转版本。
+
+类型推断
+在许多情况下，Lean 可以自动确定表达式的类型。在这些情况下，可以从顶级定义（with def）和本地定义（with let）中省略显式类型。例如，递归调用unzip不需要注释：
+
+```lean
+def unzip : List (α × β) → List α × List β
+  | [] => ([], [])
+  | (x, y) :: xys =>
+    let unzipped := unzip xys
+    (x :: unzipped.fst, y :: unzipped.snd)
+```
+
+根据经验，省略文字值的类型（如字符串和数字）通常是可行的，尽管 Lean 可能会为文字数字选择一种比预期类型更具体的类型。精益通常可以确定函数应用程序的类型，因为它已经知道参数类型和返回类型。省略函数定义的返回类型通常会起作用，但函数参数通常需要注释。不是函数的定义，如unzipped示例中，如果它们的主体不需要类型注释，则不需要类型注释，并且此定义的主体是函数应用程序。
+
+unzip使用显式表达式时可以省略返回类型match：
+
+```lean
+def unzip (pairs : List (α × β)) :=
+  match pairs with
+  | [] => ([], [])
+  | (x, y) :: xys =>
+    let unzipped := unzip xys
+    (x :: unzipped.fst, y :: unzipped.snd)
+```
+
+一般来说，最好选择过多的类型注释，而不是过少的类型注释。首先，显式类型将关于代码的假设传达给读者。即使 Lean 可以自己确定类型，仍然可以更轻松地阅读代码，而无需重复查询 Lean 以获取类型信息。其次，显式类型有助于定位错误。一个程序关于它的类型越明确，错误消息的信息就越多。这对于像 Lean 这样具有非常富有表现力的类型系统的语言来说尤其重要。第三，显式类型首先使编写程序更容易。类型是规范，编译器的反馈可以成为编写符合规范的程序的有用工具。最后，Lean 的类型推断是一个尽力而为的系统。因为精益 s 类型系统的表现力如此之强，没有“最佳”或最通用的类​​型可用于所有表达式。这意味着即使你得到一个类型，也不能保证它是给定应用程序的正确类型。例如，14可以是 aNat或 an Int：
+
+```lean
+#check 14
+```
+
+```
+14 : Nat
+```
+
+```lean
+#check (14 : Int)
+```
+
+```
+14 : Int
+```
+
+缺少类型注释会给出令人困惑的错误消息。从 的定义中省略所有类型unzip：
+
+```lean
+def unzip pairs :=
+  match pairs with
+  | [] => ([], [])
+  | (x, y) :: xys =>
+    let unzipped := unzip xys
+    (x :: unzipped.fst, y :: unzipped.snd)
+```
+
+导致有关match表达式的消息：
+
+```
+invalid match-expression, pattern contains metavariables
+  []
+```
+
+这是因为match需要知道被检查值的类型，但该类型不可用。“元变量”是程序的未知部分，写?m.XYZ在错误消息中——它们在多态部分中描述。在这个程序中，参数上的类型注释是必需的。
+
+即使是一些非常简单的程序也需要类型注释。例如，标识函数只返回它传递的任何参数。使用参数和类型注释，它看起来像这样：
+
+```lean
+def id (x : α) : α := x
+```
+
+Lean能够自行确定返回类型：
+
+```lean
+def id (x : α) := x
+```
+
+但是，省略参数类型会导致错误：
+
+```lean
+def id x := x
+```
+
+```
+failed to infer binder type
+```
+
+通常，说“无法推断”或提及元变量的消息通常表明需要更多类型注释。尤其是在学习精益时，明确地提供大多数类型很有用。
+
+同时匹配
+模式匹配表达式，就像模式匹配定义一样，可以一次匹配多个值。要检查的表达式和它们匹配的模式都用逗号写在它们之间，类似于用于定义的语法。这是一个drop使用同时匹配的版本：
+
+```lean
+def drop (n : Nat) (xs : List α) : List α :=
+  match n, xs with
+  | Nat.zero, ys => ys
+  | _, [] => []
+  | Nat.succ n , y :: ys => drop n ys
+```
+
+自然数模式
+在datatypes and patterns一节中，even定义如下：
+
+```lean
+def even (n : Nat) : Bool :=
+  match n with
+  | Nat.zero => true
+  | Nat.succ k => not (even k)
+```
+
+正如有一种特殊的语法可以使列表模式比直接使用List.consand更具可读性一样List.nil，自然数可以使用文字数字和+. 例如，even也可以这样定义：
+
+```lean
+def even : Nat → Bool
+  | 0 => true
+  | n + 1 => not (even n)
+```
+
+在这种表示法中，+模式的参数服务于不同的角色。在幕后，左边的参数（n上面）变成了一些Nat.succ模式的参数，右边的参数（1上面）决定了有多少Nat.succs 环绕模式。中的显式模式halve，将 aNat除以二并丢弃余数：
+
+```lean
+def halve : Nat → Nat
+  | Nat.zero => 0
+  | Nat.succ Nat.zero => 0
+  | Nat.succ (Nat.succ n) => halve n + 1
+```
+
+可以用数字文字和替换+：
+
+```lean
+def halve : Nat → Nat
+  | 0 => 0
+  | 1 => 0
+  | n + 2 => halve n + 1
+```
+
+在幕后，这两个定义是完全等价的。记住：halve n + 1等价于(halve n) + 1，而不是halve (n + 1)。
+
+使用此语法时， to 的第二个参数+应始终是文字Nat。即使加法是可交换的，翻转模式中的参数也会导致如下错误：
+
+```lean
+def halve : Nat → Nat
+  | 0 => 0
+  | 1 => 0
+  | 2 + n => halve n + 1
+```
+
+```
+invalid patterns, `n` is an explicit pattern variable, but it only occurs in positions that are inaccessible to pattern matching
+  .(Nat.add 2 n)
+```
+
+这种限制使精益能够将+模式中符号的所有使用转换为底层的使用Nat.succ，从而使语言在幕后更简单。
+
+匿名函数
+精益中的功能不需要在顶层定义。作为表达式，函数是使用fun语法生成的。函数表达式以关键字 开头fun，后跟一个或多个参数，这些参数使用 与返回表达式分隔=>。例如，可以编写一个将数字加一的函数：
+
+```lean
+#check fun x => x + 1
+```
+
+```
+fun x => x + 1 : Nat → Nat
+```
+
+类型注释的编写方式与 on 相同def，使用括号和冒号：
+
+```lean
+#check fun (x : Int) => x + 1
+```
+
+```
+fun x => x + 1 : Int → Int
+```
+
+类似地，隐式参数可以用花括号编写：
+
+```lean
+#check fun {α : Type} (x : α) => x
+```
+
+```
+fun {α} x => x : {α : Type} → α → α
+```
+
+这种匿名函数表达式通常被称为lambda 表达式，因为在编程语言的数学描述中使用的典型符号使用希腊字母 λ (lambda)，其中 Lean 有关键字fun。尽管 Lean 确实允许λ使用而不是fun，但它是最常见的写法fun。
+
+匿名函数还支持def. 例如，可以编写一个返回自然数的前任（如果存在）的函数：
+
+```lean
+#check fun
+  | 0 => none
+  | n + 1 => some n
+```
+
+```
+fun x =>
+  match x with
+  | 0 => none
+  | Nat.succ n => some n : Nat → Option Nat
+```
+
+请注意，Lean自己对函数的描述有一个命名参数和一个match表达式。精益的许多方便的语法速记在幕后扩展为更简单的语法，并且抽象有时会泄漏。
+
+使用def带参数的定义可以重写为函数表达式。例如，一个将其参数加倍的函数可以写成如下：
+
+```lean
+def double : Nat → Nat := fun
+  | 0 => 0
+  | k + 1 => double k + 2
+```
+
+当匿名函数非常简单时，例如fun x => x + 1，创建函数的语法可能相当冗长。在该特定示例中，使用六个非空白字符来介绍该函数，其主体仅由三个非空白字符组成。对于这些简单的情况，精益提供了一种速记。在括号包围的表达式中，居中的点字符·可以代表参数，括号内的表达式成为函数的主体。也可以编写该特定函数(· + 1)。使用 键入居中的点\cdot。
+
+居中的点总是从最接近的括号中创建一个函数。例如，(· + 5, 3)is 是一个返回一对数字的函数，而((· + 5), 3)is 是一对函数和一个数字。如果使用多个点，则它们从左到右成为参数：
+
+```
+(· , ·) 1 2
+===>
+(1, ·) 2
+===>
+(1, 2)
+```
+
+def匿名函数的应用方式与使用或定义的函数完全相同let。该命令#eval (fun x => x + x) 5导致：
+
+
+10
+结果#eval (· * 2) 5：
+
+
+10
+命名空间
+Lean 中的每个名称都出现在一个名称空间中，该名称空间是名称的集合。名称使用 放置在命名空间中，命名空间中的名称也是.如此。不同命名空间中的名称不会相互冲突，即使它们在其他方面相同。这意味着和是不同的名称。命名空间可以嵌套，嵌套命名空间中的名称也是如此。List.mapmapListList.mapArray.mapProject.Frontend.User.loginTimeloginTimeProject.Frontend.User
+
+名称可以直接在命名空间中定义。例如，名称double可以在Nat命名空间中定义：
+
+
+def Nat.double (x : Nat) : Nat := x + x
+因为Nat也是类型的名称，所以点表示法可用于调用Nat.double具有 type 的表达式Nat：
+
+
+#eval (4 : Nat).double
+
+8
+除了直接在命名空间中定义名称外，还可以使用namespaceandend命令将一系列声明放置在命名空间中。例如，这定义了命名空间中的tripleand ：quadrupleNewNamespace
+
+
+namespace NewNamespace
+def triple (x : Nat) : Nat := 3 * x
+def quadruple (x : Nat) : Nat := 2 * x + 2 * x
+end NewNamespace
+要引用它们，请在它们的名称前加上NewNamespace.：
+
+
+#check NewNamespace.triple
+
+NewNamespace.triple : Nat → Nat
+
+#check NewNamespace.quadruple
+
+NewNamespace.quadruple : Nat → Nat
+可以打开命名空间，这允许在没有明确限定的情况下使用其中的名称。在表达式之前写入open MyNamespace in会导致表达式中的内容MyNamespace可用。例如，timesTwelve同时使用quadruple和triple打开后NewNamespace：
+
+
+def timesTwelve (x : Nat) :=
+  open NewNamespace in
+  quadruple (triple x)
+命名空间也可以在命令之前打开。这允许命令的所有部分引用命名空间的内容，而不仅仅是单个表达式。为此，请将open ... in命令放在前面。
+
+
+open NewNamespace in
+#check quadruple
+
+quadruple : Nat → Nat
+最后，可以为文件其余部分的所有以下命令打开名称空间。为此，只需in从open.
+
+如果让
+当使用 sum 类型的值时，通常只有一个构造函数是有意义的。例如，给定表示 Markdown 内联元素子集的这种类型：
+
+```lean
+inductive Inline : Type where
+  | lineBreak
+  | string : String → Inline
+  | emph : Inline → Inline
+  | strong : Inline → Inline
+```
+
+可以编写一个识别字符串元素并提取其内容的函数：
+
+```lean
+def Inline.string? (inline : Inline) : Option String :=
+  match inline with
+  | Inline.string s => some s
+  | _ => none
+```
+
+编写此函数主体的另一种方法与if一起使用let：
+
+```lean
+def Inline.string? (inline : Inline) : Option String :=
+  if let Inline.string s := inline then
+    some s
+  else none
+```
+
+这非常类似于模式匹配let语法。不同之处在于它可以与 sum 类型一起使用，因为在elsecase 中提供了回退。在某些情况下，使用if let而不是match可以使代码更易于阅读。
+
+位置结构参数
+关于结构的部分介绍了两种构建结构的方法：
+
+可以直接调用构造函数，如Point.mk 1 2.
+可以使用大括号表示法，如{ x := 1, y := 2 }.
+在某些情况下，按位置而不是按名称传递参数可能很方便，但无需直接命名构造函数。例如，定义各种相似的结构类型可以帮助保持领域概念的分离，但阅读代码的自然方式可能会将它们中的每一个本质上视为一个元组。在这些上下文中，参数可以用尖括号⟨和⟩. APoint可以写⟨1, 2⟩。当心！尽管它们看起来像小于号<和大于号>，但这些括号是不同的。它们可以分别使用\<和输入\>。
+
+就像命名构造函数参数的大括号符号一样，这种位置语法只能在 Lean 可以从类型注释或程序中的其他类型信息确定结构类型的上下文中使用。例如，#eval ⟨1, 2⟩产生以下错误：
+
+
+invalid constructor ⟨...⟩, expected type must be an inductive type 
+  ?m.27299
+错误中的元变量是因为没有可用的类型信息。添加注解，例如 in #eval (⟨1, 2⟩ : Point)，可以解决问题：
+
+
+{ x := 1.000000, y := 2.000000 }
+字符串插值
+在 Lean 中，为字符串添加前缀s!会触发插值，其中字符串内大括号中包含的表达式被替换为它们的值。这类似于fPython 中的 -strings 和$C# 中的 -prefixed 字符串。例如，
+
+
+#eval s!"three fives is {NewNamespace.triple 5}"
+产生输出
+
+
+"three fives is 15"
+并非所有表达式都可以插入到字符串中。例如，尝试对函数进行插值会导致错误。
+
+
+#check s!"three fives is {NewNamespace.triple}"
+产生输出
+
+
+failed to synthesize instance
+  ToString (Nat → Nat)
+这是因为没有将函数转换为字符串的标准方法。精益编译器维护了一个表，该表描述了如何将各种类型的值转换为字符串，并且该消息failed to synthesize instance意味着精益编译器在该表中没有找到给定类型的条目。这使用与结构部分deriving Repr中描述的语法相同的语言特征。
